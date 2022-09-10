@@ -127,7 +127,7 @@ namespace estd {
         public:
             TmpDir(std::filesystem::path root) { iPath = generateUniqueTempDir(root); }
             TmpDir() { iPath = generateUniqueTempDir(std::filesystem::current_path()); }
-            // ~TmpDir() { std::filesystem::remove_all(iPath); }
+            ~TmpDir() { std::filesystem::remove_all(iPath); }
 
             std::filesystem::path path() { return iPath; }
 
