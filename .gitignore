@@ -1,5 +1,8 @@
 /build/
 /.vscode/
 /gmon.out
-/vendor2/
-/vendor/include/boost/regex/v4/
+/vendor/
+/sandbox/
+/sandbox_copy/
+/example
+/runtests

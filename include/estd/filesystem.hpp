@@ -37,26 +37,53 @@
 
 namespace estd {
     namespace files {
-        class Path : public std::filesystem::path {
+        // class Path : public std::filesystem::path {
+        class Path {
+        private:
+            std::string path;
+
         public:
-            using std::filesystem::path::path;
-            using std::filesystem::path::operator=;
+            Path() noexcept {}
+            Path(const Path& p) = default;
+            Path(Path&& p) = default;
+            Path(std::filesystem::path&& source) { path = source; }
+            template <class Source>
+            Path(const Source& source) {
+                path = source;
+            }
+            Path(std::string source) { path = source; }
+            Path(const char* source) { path = source; }
+            Path(const std::filesystem::path& source) { path = source; }
 
-            Path(const std::filesystem::path& p) { *this = std::filesystem::path(p); }
-            Path(std::filesystem::path&& p) { *this = std::filesystem::path(p); }
-            Path(const Path& p) { *this = std::filesystem::path(p); }
-            Path(Path&& p) { *this = std::filesystem::path(p); }
+            Path& operator=(const Path& p) = default;
+            Path& operator=(Path&& p) = default;
 
-            Path& operator=(const Path& p) { return (*this = std::filesystem::path(p)); }
-            Path& operator=(Path&& p) { return (*this = std::filesystem::path(p)); }
-            Path& operator=(const std::filesystem::path& p) { return *this = p.string(), *this; }
-            Path& operator=(std::filesystem::path&& p) { return *this = p.string(), *this; }
+            bool operator==(Path&& other) { return path == other.string(); }
+            bool operator!=(Path&& other) { return path != other.string(); }
+            bool operator==(const Path& other) { return path == other.string(); }
+            bool operator!=(const Path& other) { return path != other.string(); }
+
+            friend Path operator/(const Path& lhs, const Path& rhs) { return Path(lhs.string() + "/" + rhs.string()); }
+            friend Path operator+(const Path& lhs, const Path& rhs) { return Path(lhs.string() + rhs.string()); }
+            friend Path& operator/=(Path& lhs, const Path& rhs) { return lhs.path += "/" + rhs.string(), lhs; }
+            friend Path& operator+=(Path& lhs, const Path& rhs) { return lhs.path += rhs.string(), lhs; }
+
+            friend std::ostream& operator<<(std::ostream& stream, Path p) {
+                return stream << "\"" << p.string() << "\"";
+            }
+
+            operator std::filesystem::path() const { return std::filesystem::path(path); }
+            operator std::string() const { return path; }
+
+            std::string string() const noexcept { return path; }
 
             Path normalize() {
-                Path tmp = this->lexically_normal();
+                Path tmp = std::filesystem::path(path).lexically_normal();
                 if (tmp == "." || tmp == "./") { tmp = ""; }
                 return tmp;
             }
+
+            Path normalizeSafe() = delete; // TODO: Not implemented yet
 
             // tells if this path is a parent of the passed path if(other is a tree in *this) (only for directories)
             bool contains(Path& other) {
@@ -65,6 +92,15 @@ namespace estd {
 
                 return estd::string_util::hasPrefix(right, left);
             }
+
+            Path removeEmptySuffix() { return hasSuffix() ? *this : splitSuffix().first; }
+            Path removeEmptyPrefix() { return hasPrefix() ? *this : splitPrefix().second; }
+            bool hasPrefix() { return splitPrefix().first != ""; }
+            bool hasSuffix() { return splitSuffix().second != ""; }
+            Path getPrefix() { return splitPrefix().first; }
+            Path getSuffix() { return splitSuffix().second; }
+            Path replaceSuffix(Path s) { return splitSuffix().first / s; }
+            Path replacePrefix(Path s) { return s / splitPrefix().second; }
 
             std::pair<Path, Path> splitPrefix() {
                 size_t mid_pos = 0;
@@ -97,25 +133,25 @@ namespace estd {
             estd::stack_ptr<Path> replacePrefix(Path from, Path to) {
                 Path path = *this;
 
-                path = ("." / path).lexically_normal();
-                from = ("." / from).lexically_normal();
-                to = ("." / to).lexically_normal();
+                path = ("." / path).normalize();
+                from = ("." / from).normalize();
+                to = ("." / to).normalize();
 
-                bool pathIsDir = !path.has_filename();
-                bool fromIsDir = !from.has_filename();
-                bool toIsDir = !to.has_filename();
+                bool pathIsDir = !path.hasSuffix();
+                bool fromIsDir = !from.hasSuffix();
+                bool toIsDir = !to.hasSuffix();
 
-                to = (to / "").lexically_normal();
-                from = (from / "").lexically_normal();
-                path = (path / "").lexically_normal();
+                to = (to / "").normalize();
+                from = (from / "").normalize();
+                path = (path / "").normalize();
 
                 if (toIsDir && !fromIsDir) { // from is a file && to is a dir
-                    to = to.replace_filename(from.parent_path().filename());
-                    to = (to / "").lexically_normal();
+                    to = to.replaceSuffix(from.splitSuffix().first.getSuffix());
+                    to = (to / "").normalize();
                 }
 
                 if (from == "" || from == "." || from == "./") {
-                    Path result = (to / path).lexically_normal();
+                    Path result = (to / path).normalize();
                     if (!pathIsDir) return result.splitSuffix().first; // remove slash at end
                     return result;
                 }
@@ -123,12 +159,110 @@ namespace estd {
                 if (!estd::string_util::hasPrefix(path, from)) return nullptr;
                 Path result = estd::string_util::replacePrefix(path, from, to);
 
-                result = result.lexically_normal();
-                if (!pathIsDir) result = result.splitSuffix().first.lexically_normal();
+                result = result.normalize();
+                if (!pathIsDir) result = result.splitSuffix().first.normalize();
 
                 return result;
             }
         };
+
+        typedef std::filesystem::copy_options CopyOptions;
+        class DirectoryIterator : public std::filesystem::directory_iterator {
+        public:
+            using std::filesystem::directory_iterator::directory_iterator;
+        };
+        class RecursiveDirectoryIterator : public std::filesystem::recursive_directory_iterator {
+        public:
+            using std::filesystem::recursive_directory_iterator::recursive_directory_iterator;
+        };
+
+        inline bool exists(Path p) { return std::filesystem::exists(p); }
+        inline uintmax_t remove(Path p) { return std::filesystem::remove_all(p); }
+        inline bool isDirectory(Path p) { return std::filesystem::is_directory(p); }
+        inline Path followSoftLink(Path p) { return std::filesystem::read_symlink(p); }
+        inline bool isSoftLink(Path p) { return std::filesystem::is_symlink(p); }
+        inline bool isBlockFile(Path p) { return std::filesystem::is_block_file(p); }
+        inline bool isCharacterFile(Path p) { return std::filesystem::is_character_file(p); }
+        inline bool isEmptry(Path p) { return std::filesystem::is_empty(p); }
+        inline bool isFIFO(Path p) { return std::filesystem::is_fifo(p); }
+        inline bool isOther(Path p) { return std::filesystem::is_other(p); }
+        inline bool isFile(Path p) { return std::filesystem::is_regular_file(p); }
+        // returns if it is a directory or a softlink to a directory
+        inline bool isSoftDirectory(Path p) {
+            if (isDirectory(p)) return true;
+            if (isSoftLink(p)) {
+                Path link = followSoftLink(p);
+                if (exists(link)) return isSoftDirectory(p);
+                return !link.hasSuffix();
+            }
+            return false;
+        }
+
+        inline bool isSoftFile(Path p) {
+            if (isFile(p)) return true;
+            if (isSoftLink(p)) {
+                Path link = followSoftLink(p);
+                if (exists(link)) return isSoftFile(p);
+                return link.hasSuffix();
+            }
+            return false;
+        }
+        inline bool isSocket(Path p) { return std::filesystem::is_socket(p); }
+
+        inline void createHardLink(Path from, Path to) { return std::filesystem::create_hard_link(from, to); }
+        inline void createSoftLink(Path from, Path to) {
+            Path linkroot = to.removeEmptySuffix().splitSuffix().first;
+            from = std::filesystem::relative(from, linkroot);
+            to = to.removeEmptySuffix();
+            std::filesystem::create_symlink(from, to);
+        }
+        //from path will be relative (the way it is in the OS)
+        inline void createSoftLinkRelative(Path from, Path to) {
+            to = to.removeEmptySuffix();
+            std::filesystem::create_symlink(from, to);
+        }
+
+        inline void createDirectories(Path p) { std::filesystem::create_directories(p); }
+        inline void createDirectory(Path p) { std::filesystem::create_directory(p); }
+        // TODO: change to filesystem error exceptions
+        inline void copy(
+            Path from,
+            Path to,
+            const CopyOptions opt = CopyOptions::overwrite_existing | CopyOptions::recursive |
+                                    CopyOptions::copy_symlinks
+        ) {
+            auto throwError = [](std::string description, Path dir1) {
+                throw std::runtime_error(std::string("filesystem error: ") + description + " [" + dir1.string() + "]");
+            };
+
+            if (!exists(from.removeEmptySuffix())) throwError("cannot copy: No such file or directory", from);
+
+            bool fromIsDir = !to.hasSuffix();
+
+            if (fromIsDir != isSoftDirectory(from)) {
+                if (fromIsDir) {
+                    throwError("cannot copy: source not a directory", from);
+                } else {
+                    throwError("cannot copy: source not a file", from);
+                }
+            }
+
+            bool toIsDir = !to.hasSuffix();
+
+            if (exists(to.removeEmptySuffix())) {
+                if (toIsDir != isSoftDirectory(to)) {
+                    if (toIsDir) {
+                        throwError("cannot copy: destination not a directory", from);
+                    } else {
+                        throwError("cannot copy: destination not a file", from);
+                    }
+                }
+            }
+            try {
+                std::filesystem::copy(from, to, opt);
+            } catch (std::exception& e) { throw std::runtime_error(e.what()); }
+        }
+
         // sample error:
         // filesystem error: cannot copy: No such file or directory [...] [...]
 
@@ -168,38 +302,6 @@ namespace estd {
                     std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing);
                 }
             }
-        }
-
-        // returns the files that could not be written to
-        template <bool recursive = true>
-        void copyNoOverwrite(Path from, Path to, std::vector<Path>& visited) {
-            if (!std::filesystem::is_directory(from)) {
-                if (!std::filesystem::exists(to)) {
-                    std::filesystem::copy_file(from, to);
-                } else {
-                    visited.push_back(to);
-                }
-            } else {
-                std::filesystem::create_directories(to);
-                if constexpr (recursive) {
-                    for (const auto& entry : std::filesystem::directory_iterator(from)) {
-                        Path dirname = Path(entry.path()).splitSuffix().second;
-
-                        Path toF = to / dirname;
-                        Path fromF = entry.path();
-
-                        copyNoOverwrite<recursive>(fromF, toF, visited);
-                    }
-                }
-            }
-        }
-
-        // returns the files that could not be written to
-        template <bool recursive = true>
-        std::vector<Path> copyNoOverwrite(Path from, Path to) {
-            std::vector<Path> visited = {};
-            copyNoOverwrite<recursive>(from, to, visited);
-            return visited;
         }
 
         // Path findLargestCommonPrefix(Path p1, Path p2) {
