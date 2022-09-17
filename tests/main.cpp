@@ -1,7 +1,10 @@
+#include <iostream>
+
 #include <estd/filesystem.hpp>
 #include <fstream>
 #include <functional>
 #include <iostream>
+
 
 using std::cout;
 using std::endl;
@@ -33,8 +36,9 @@ public:
         bool testResult = false;
         try {
             testResult = test();
-        } catch (std::exception& e) { cout << e.what() << endl; } catch (...) {
-        };
+        } catch (std::exception& e) {
+            if (verbose) { cout << e.what() << endl; }
+        } catch (...) {};
         if (testResult) {
             cout << "[PASS] test number ";
             passedNum++;
@@ -90,20 +94,25 @@ int main() {
     test.testBool(p.removeEmptyPrefix() == "some/root/path/");
     test.testBool(p.removeEmptySuffix() == "/some/root/path");
 
-    fs::remove("sandbox");
-    fs::remove("sandbox_copy");
+    test.testLambda([&] {
+        fs::remove("sandbox");
+        fs::remove("sandbox_copy");
+        return true;
+    });
 
     test.testLambda([&] {
         fs::createDirectories("sandbox/dir/subdir/");
         std::ofstream("sandbox/dir/file1.txt").put('a');
         fs::createSoftLink("sandbox/dir/file1.txt", "sandbox/file2.txt");
         fs::createHardLink("sandbox/dir/file1.txt", "sandbox/file3.txt");
+
         fs::copy("sandbox/dir/", "sandbox/dir2/");
         fs::copy("sandbox/", "sandbox_copy/");
-        fs::remove("sandbox");
-        fs::remove("sandbox_copy");
         return true;
     });
+
+    fs::remove("sandbox");
+    fs::remove("sandbox_copy");
 
     test.testLambda([&] {
         fs::createDirectories("sandbox/dir/subdir/");
@@ -111,10 +120,75 @@ int main() {
         fs::createSoftLink("sandbox/dir/subdir/", "sandbox/dir/sublink/");
         fs::copy("sandbox/dir/", "sandbox/dir2/");
         fs::copy("sandbox/", "sandbox_copy/");
-        fs::remove("sandbox");
-        fs::remove("sandbox_copy");
         return true;
     });
+    fs::remove("sandbox_copy");
+    fs::remove("sandbox");
+    test.testLambda([&] {
+        try {
+            fs::createDirectories("sandbox/dir/subdir/");
+            std::ofstream("sandbox/dir/subdir/file1.txt").put('b');
+            fs::createDirectories("sandbox/dir/subdir/file2.txt/");
+            fs::copy("sandbox/dir/subdir/file1.txt", "sandbox/dir/subdir/file2.txt");
+
+        } catch (...) { return true; }
+        return false;
+    });
+
+    fs::remove("sandbox");
+    test.testLambda([&] {
+        try {
+            fs::createDirectories("sandbox/dir/subdir/");
+            std::ofstream("sandbox/dir/subdir/file1.txt").put('b');
+            fs::createDirectories("sandbox/dir/subdir/file2.txt/");
+
+            fs::createDirectories("sandbox/dir/subdir2/");
+            std::ofstream("sandbox/dir/subdir2/file1.txt").put('b');
+            std::ofstream("sandbox/dir/subdir2/file2.txt").put('a');
+
+            fs::copy("sandbox/dir/subdir/", "sandbox/dir/subdir2/");
+        } catch (...) { return true; }
+        return false;
+    });
+
+    fs::remove("sandbox");
+    test.testLambda([&] {
+        try {
+            fs::createDirectories("sandbox/dir/subdir/");
+            std::ofstream("sandbox/dir/subdir/file1.txt").put('b');
+            fs::createDirectories("sandbox/dir/subdir/file2.txt/");
+
+            fs::createDirectories("sandbox/dir/subdir2/");
+            std::ofstream("sandbox/dir/subdir2/file1.txt").put('b');
+            std::ofstream("sandbox/dir/subdir2/file2.txt").put('a');
+
+            fs::copy("sandbox/dir/subdir2/", "sandbox/dir/subdir/");
+            if (fs::exists("sandbox/dir/subdir/file2.txt/file2.txt"))
+                return false; // This test proves std copy function is not reliable
+        } catch (...) { return true; }
+        return true;
+    });
+    fs::remove("sandbox");
+    test.testLambda([&] {
+        fs::createDirectories("sandbox/dir/subdir/");
+        std::ofstream("sandbox/dir/subdir/file1.txt").put('b');
+        fs::createDirectories("sandbox/dir/subdir/file2.txt/");
+
+        fs::createDirectories("sandbox/dir/subdir2/");
+        std::ofstream("sandbox/dir/subdir2/file1.txt").put('b');
+        std::ofstream("sandbox/dir/subdir2/file2.txt").put('a');
+
+        fs::copy(
+            "sandbox/dir/subdir2/",
+            "sandbox/dir/subdir/",
+            fs::CopyOptions::recursive | fs::CopyOptions::overwriteExisting
+        );
+        if (fs::exists("sandbox/dir/subdir/file2.txt/file2.txt"))
+            return false; // This test proves std copy function is not reliable
+        return true;
+    });
+
+    // fs::remove("sandbox");
 
     cout << endl << test.getStats() << endl;
 

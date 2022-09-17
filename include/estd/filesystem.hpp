@@ -32,12 +32,16 @@
 
 #include <estd/ptr.hpp>
 #include <estd/string_util.h>
+#include <exception>
 #include <filesystem>
 #include <vector>
 
 namespace estd {
     namespace files {
-        // class Path : public std::filesystem::path {
+        class FileException : public std::runtime_error {
+        public:
+            using std::runtime_error::runtime_error;
+        };
         class Path {
         private:
             std::string path;
@@ -93,6 +97,10 @@ namespace estd {
                 return estd::string_util::hasPrefix(right, left);
             }
 
+            bool isFile() { return hasSuffix(); }
+            bool isDirectory() { return !hasSuffix(); }
+            Path addEmptySuffix() { return hasSuffix() ? *this / "" : *this; }
+            Path addEmptyPrefix() { return hasPrefix() ? "" / *this : *this; }
             Path removeEmptySuffix() { return hasSuffix() ? *this : splitSuffix().first; }
             Path removeEmptyPrefix() { return hasPrefix() ? *this : splitPrefix().second; }
             bool hasPrefix() { return splitPrefix().first != ""; }
@@ -166,7 +174,41 @@ namespace estd {
             }
         };
 
-        typedef std::filesystem::copy_options CopyOptions;
+        namespace {
+            void throwError(std::string description, Path* dir1 = nullptr, Path* dir2 = nullptr) {
+                if (dir2 != nullptr && dir1 != nullptr) {
+                    throw estd::files::FileException(
+                        std::string("filesystem error: ") + description + " [" + dir1->string() + "]" + " [" +
+                        dir2->string() + "]"
+                    );
+                } else if (dir1 != nullptr) {
+                    throw estd::files::FileException(
+                        std::string("filesystem error: ") + description + " [" + dir1->string() + "]"
+                    );
+                } else {
+                    throw estd::files::FileException(std::string("filesystem error: ") + description);
+                }
+            };
+        } // namespace
+
+        enum CopyOptions : uint64_t {
+            none = 0,
+
+            skipExisting = 1 << 0,
+            overwriteExisting = 1 << 1,
+            updateExisting = 1 << 2,
+
+            recursive = 1 << 3,
+
+            softLinksAsCopies = 1 << 4,
+            skipSoftLinks = 1 << 5,
+            directoriesOnly = 1 << 6,
+
+            copyAsSoftLinks = 1 << 7,
+            copyAsHardLinks = 1 << 8
+        };
+        // typedef std::filesystem::copy_options CopyOptions;
+
         class DirectoryIterator : public std::filesystem::directory_iterator {
         public:
             using std::filesystem::directory_iterator::directory_iterator;
@@ -175,6 +217,10 @@ namespace estd {
         public:
             using std::filesystem::recursive_directory_iterator::recursive_directory_iterator;
         };
+
+        using FileTime = std::filesystem::file_time_type;
+
+        inline void copy(Path from, Path to, const uint64_t opt = CopyOptions::recursive);
 
         inline bool exists(Path p) { return std::filesystem::exists(p); }
         inline uintmax_t remove(Path p) { return std::filesystem::remove_all(p); }
@@ -212,8 +258,9 @@ namespace estd {
         inline void createHardLink(Path from, Path to) { return std::filesystem::create_hard_link(from, to); }
         inline void createSoftLink(Path from, Path to) {
             Path linkroot = to.removeEmptySuffix().splitSuffix().first;
+            if (isSoftDirectory(from) || !from.hasSuffix()) to = to.removeEmptySuffix();
             from = std::filesystem::relative(from, linkroot);
-            to = to.removeEmptySuffix();
+
             std::filesystem::create_symlink(from, to);
         }
         //from path will be relative (the way it is in the OS)
@@ -224,42 +271,106 @@ namespace estd {
 
         inline void createDirectories(Path p) { std::filesystem::create_directories(p); }
         inline void createDirectory(Path p) { std::filesystem::create_directory(p); }
-        // TODO: change to filesystem error exceptions
-        inline void copy(
-            Path from,
-            Path to,
-            const CopyOptions opt = CopyOptions::overwrite_existing | CopyOptions::recursive |
-                                    CopyOptions::copy_symlinks
-        ) {
-            auto throwError = [](std::string description, Path dir1) {
-                throw std::runtime_error(std::string("filesystem error: ") + description + " [" + dir1.string() + "]");
-            };
 
-            if (!exists(from.removeEmptySuffix())) throwError("cannot copy: No such file or directory", from);
+        inline FileTime getModificationTime(Path p) { return std::filesystem::last_write_time(p); }
+        inline void setModificationTime(Path p, FileTime n) { std::filesystem::last_write_time(p, n); }
 
-            bool fromIsDir = !to.hasSuffix();
+        inline void copySoftLink(Path from, Path to) { std::filesystem::copy_symlink(from, to); }
+        inline void copyDirectory(Path from, Path to, const uint64_t opt = CopyOptions::recursive) {
+            createDirectories(to); // copy_dir does not work
+            auto newTime = getModificationTime(from);
+            setModificationTime(from, newTime);
 
-            if (fromIsDir != isSoftDirectory(from)) {
-                if (fromIsDir) {
-                    throwError("cannot copy: source not a directory", from);
+            // dir has been copied
+
+            if (!(opt & CopyOptions::recursive)) return;
+
+            estd::stack_ptr<std::runtime_error> err;
+            for (auto e : DirectoryIterator(from)) {
+                try {
+                    Path fromE = e.path();
+                    fromE = fromE.removeEmptySuffix();
+                    if (isSoftDirectory(fromE)) fromE /= "";
+                    Path toE = fromE.replacePrefix(from, to).value();
+
+                    copy(fromE, toE, opt);
+                } catch (std::exception& tmp) { err = std::runtime_error(tmp.what()); }
+            }
+            if (err) throw err.value();
+        }
+        inline void copyFile(Path from, Path to, const uint64_t opt = CopyOptions::none) {
+            using sco = std::filesystem::copy_options;
+            sco sopt = sco::none;
+
+            if (opt & CopyOptions::overwriteExisting) {
+                sopt |= sco::overwrite_existing;
+            } else if (opt & CopyOptions::updateExisting) {
+                sopt |= sco::update_existing;
+            } else if (opt & CopyOptions::skipExisting) {
+                sopt |= sco::skip_existing;
+            }
+
+            if (opt & CopyOptions::directoriesOnly) { return; }
+            if (!(opt & CopyOptions::softLinksAsCopies)) { sopt |= sco::copy_symlinks; }
+            if (opt & CopyOptions::copyAsHardLinks) {
+                sopt |= sco::create_hard_links;
+            } else if (opt & CopyOptions::copyAsSoftLinks) {
+                sopt |= sco::create_symlinks;
+            }
+
+            if (isDirectory(from)) throwError("copyFile cannot copy a directory", &from);
+            if (isDirectory(to)) {
+                if (opt & CopyOptions::skipExisting) {
+                    return;
+                } else if (opt & CopyOptions::overwriteExisting) {
+                    remove(to);
+                    std::filesystem::copy_file(from, to, sopt);
+                    return;
+                } else if (opt & CopyOptions::updateExisting) {
+                    if (getModificationTime(from) < getModificationTime(to)) return;
+                    remove(to);
+                    std::filesystem::copy_file(from, to, sopt);
+                    return;
+                }
+            }
+
+            std::filesystem::copy_file(from, to, sopt);
+        }
+
+        inline void copy(Path from, Path to, const uint64_t opt) {
+            if (!exists(from.removeEmptySuffix())) throwError("cannot copy: No such file or directory", &from);
+
+            if (from.isDirectory() != isSoftDirectory(from)) {
+                if (from.isDirectory()) {
+                    throwError("cannot copy: source not a directory", &from);
                 } else {
-                    throwError("cannot copy: source not a file", from);
+                    throwError("cannot copy: source not a file", &from);
                 }
             }
 
-            bool toIsDir = !to.hasSuffix();
+            // bool toIsDir = to.isDirectory();
 
-            if (exists(to.removeEmptySuffix())) {
-                if (toIsDir != isSoftDirectory(to)) {
-                    if (toIsDir) {
-                        throwError("cannot copy: destination not a directory", from);
-                    } else {
-                        throwError("cannot copy: destination not a file", from);
-                    }
-                }
-            }
+            // if (exists(to.removeEmptySuffix())) {
+            //     // if (toIsDir != isSoftDirectory(to)) {
+            //     if (toIsDir) {
+            //         throwError("cannot copy: destination not a directory", &from, &to);
+            //     } else {
+            //         throwError("cannot copy: destination not a file", &from, &to);
+            //     }
+            //     // }
+            // }
+
             try {
-                std::filesystem::copy(from, to, opt);
+                if (isSoftLink(from.removeEmptySuffix())) {
+                    // std::cout << "copy_symlink(" << from << ", " << to << ")\n";
+                    copySoftLink(from.removeEmptySuffix(), to.removeEmptySuffix());
+                } else if (from.isFile()) { // TODO: test strange files such as sockets and blocks under this if
+                    // std::cout << "copy_file(" << from << ", " << to << ")\n";
+                    copyFile(from.removeEmptySuffix(), to.removeEmptySuffix(), opt);
+                } else if (from.isDirectory()) {
+                    // std::cout << "copy_dir(" << from << ", " << to << ")\n";
+                    copyDirectory(from.addEmptySuffix(), to.addEmptySuffix(), opt);
+                }
             } catch (std::exception& e) { throw std::runtime_error(e.what()); }
         }
 
@@ -293,16 +404,16 @@ namespace estd {
             }
         };
 
-        template <bool recursive = true, bool overwrite = true>
-        void copy(Path from, Path to) {
-            if (!std::filesystem::is_directory(from)) {
-                std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing);
-            } else {
-                if (!std::filesystem::exists(to) || overwrite) {
-                    std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing);
-                }
-            }
-        }
+        // template <bool recursive = true, bool overwrite = true>
+        // void copy(Path from, Path to) {
+        //     if (!std::filesystem::is_directory(from)) {
+        //         std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing);
+        //     } else {
+        //         if (!std::filesystem::exists(to) || overwrite) {
+        //             std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing);
+        //         }
+        //     }
+        // }
 
         // Path findLargestCommonPrefix(Path p1, Path p2) {
         //     p1 = p1.lexically_normal();
