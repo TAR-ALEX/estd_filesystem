@@ -207,15 +207,96 @@ namespace estd {
             copyAsSoftLinks = 1 << 7,
             copyAsHardLinks = 1 << 8
         };
-        // typedef std::filesystem::copy_options CopyOptions;
+
+        inline bool isSoftDirectory(Path p);
+
+        class DirectoryEntry : public std::filesystem::directory_entry {
+        public:
+            using std::filesystem::directory_entry::directory_entry;
+            Path path() const noexcept { return std::filesystem::directory_entry::path(); }
+            operator Path() const noexcept { return std::filesystem::directory_entry::path(); }
+            void assign(const Path& p) { std::filesystem::directory_entry::assign(p); }
+        };
 
         class DirectoryIterator : public std::filesystem::directory_iterator {
+            mutable DirectoryEntry e;
+
         public:
             using std::filesystem::directory_iterator::directory_iterator;
+            friend inline DirectoryIterator begin(DirectoryIterator iter) noexcept { return iter; }
+            friend inline DirectoryIterator end(DirectoryIterator) noexcept { return DirectoryIterator(); }
+            const DirectoryEntry& operator*() const noexcept {
+                e = DirectoryEntry(std::filesystem::directory_iterator::operator*());
+
+                if (e.is_directory()) {
+                    e.assign(e.path().addEmptySuffix());
+                    return e;
+                } else if (e.is_symlink()) {
+                    if (isSoftDirectory(e.path())) {
+                        e.assign(e.path().addEmptySuffix());
+                        return e;
+                    } else {
+                        e.assign(e.path().removeEmptySuffix());
+                        return e;
+                    }
+                }
+                e.assign(Path(e.path()).removeEmptySuffix());
+                return e;
+            }
+            const DirectoryEntry* operator->() const noexcept { return &*(*this); }
+            DirectoryIterator& operator++() {
+                std::filesystem::directory_iterator::operator++();
+                return *this;
+            }
+            DirectoryIterator& increment(std::error_code& ec) {
+                std::filesystem::directory_iterator::increment(ec);
+                return *this;
+            }
+
+            DirectoryIterator operator++(int) {
+                DirectoryIterator old{**this};
+                ++*this;
+                return old;
+            }
         };
-        class RecursiveDirectoryIterator : public std::filesystem::recursive_directory_iterator {
+        class RecursiveDirectoryIterator : public std::filesystem::directory_iterator {
+            mutable DirectoryEntry e;
+
         public:
-            using std::filesystem::recursive_directory_iterator::recursive_directory_iterator;
+            using std::filesystem::directory_iterator::directory_iterator;
+            friend inline RecursiveDirectoryIterator begin(RecursiveDirectoryIterator iter) noexcept { return iter; }
+            friend inline RecursiveDirectoryIterator end(RecursiveDirectoryIterator) noexcept {
+                return RecursiveDirectoryIterator();
+            }
+            const DirectoryEntry& operator*() const noexcept {
+                e = DirectoryEntry(std::filesystem::directory_iterator::operator*());
+                if (e.is_directory()) {
+                    e.assign(e.path().addEmptySuffix());
+                    return e;
+                } else if (e.is_symlink()) {
+                    if (isSoftDirectory(e.path())) {
+                        e.assign(e.path().addEmptySuffix());
+                        return e;
+                    } else {
+                        e.assign(e.path().removeEmptySuffix());
+                        return e;
+                    }
+                }
+                e.assign(Path(e.path()).removeEmptySuffix());
+                return e;
+            }
+            const DirectoryEntry* operator->() const noexcept { return &*(*this); }
+            RecursiveDirectoryIterator& operator++() {
+                return std::filesystem::directory_iterator::operator++(), *this;
+            }
+            RecursiveDirectoryIterator& increment(std::error_code& ec) {
+                return std::filesystem::directory_iterator::increment(ec), *this;
+            }
+            RecursiveDirectoryIterator operator++(int) {
+                RecursiveDirectoryIterator old{**this};
+                ++*this;
+                return old;
+            }
         };
 
         using FileTime = std::filesystem::file_time_type;
@@ -277,20 +358,50 @@ namespace estd {
 
         inline void copySoftLink(Path from, Path to) { std::filesystem::copy_symlink(from, to); }
         inline void copyDirectory(Path from, Path to, const uint64_t opt = CopyOptions::recursive) {
-            createDirectories(to); // copy_dir does not work
-            auto newTime = getModificationTime(from);
-            setModificationTime(from, newTime);
+            if (from.isFile()) {
+                throwError("copyDirectory cannot copy, from is not a directory", &from);
+            } else if (to.isFile()) {
+                throwError("copyDirectory cannot copy, to is not a directory", &to);
+            }
+
+            if (!exists(from)) throwError("copyDirectory trying to copy a directory that does not exist", &from);
+            if (!isDirectory(from)) throwError("copyDirectory trying to copy a file", &from);
+
+            if (exists(to) && !isDirectory(to)) { throwError("copyDirectory trying to copy to a file", &to); }
+
+            if (opt & CopyOptions::updateExisting) {
+                auto newTime = getModificationTime(from);
+                auto oldTime = getModificationTime(to);
+                if (newTime > oldTime) {
+                    if (exists(to) && !isDirectory(to)) remove(to);
+                    createDirectories(to); // copy_dir does not work
+                    setModificationTime(to, newTime);
+                }
+            } else if (opt & CopyOptions::overwriteExisting) {
+                auto newTime = getModificationTime(from);
+                if (exists(to) && !isDirectory(to)) remove(to);
+                createDirectories(to); // copy_dir does not work
+                setModificationTime(to, newTime);
+            } else if (opt & CopyOptions::skipExisting) {
+                if (!exists(to)) createDirectories(to); // copy_dir does not work
+            } else {
+                if (!exists(to)) {
+                    createDirectories(to); // copy_dir does not work
+                } else {
+                    throwError("copyDirectory cannot copy, entry exists", &to);
+                }
+            }
+
+            if (!isDirectory(to)) return; // do not copy sub files to a file
 
             // dir has been copied
 
             if (!(opt & CopyOptions::recursive)) return;
 
-            estd::stack_ptr<std::runtime_error> err;
+            estd::stack_ptr<std::runtime_error> err; // do not abort on a single error
             for (auto e : DirectoryIterator(from)) {
                 try {
                     Path fromE = e.path();
-                    fromE = fromE.removeEmptySuffix();
-                    if (isSoftDirectory(fromE)) fromE /= "";
                     Path toE = fromE.replacePrefix(from, to).value();
 
                     copy(fromE, toE, opt);
@@ -299,6 +410,10 @@ namespace estd {
             if (err) throw err.value();
         }
         inline void copyFile(Path from, Path to, const uint64_t opt = CopyOptions::none) {
+            if (from.isFile() && to.isDirectory()) copyFile(from, to / from.getSuffix(), opt);
+            if (from.isDirectory()) throwError("copyFile cannot copy a directory", &from);
+            // At this point we can assume that from is a file and to is also a file (in terms of paths)
+
             using sco = std::filesystem::copy_options;
             sco sopt = sco::none;
 
@@ -318,7 +433,7 @@ namespace estd {
                 sopt |= sco::create_symlinks;
             }
 
-            if (isDirectory(from)) throwError("copyFile cannot copy a directory", &from);
+            if (isDirectory(from)) throwError("copyFile cannot copy expected a file got a directory", &from);
             if (isDirectory(to)) {
                 if (opt & CopyOptions::skipExisting) {
                     return;
@@ -331,6 +446,8 @@ namespace estd {
                     remove(to);
                     std::filesystem::copy_file(from, to, sopt);
                     return;
+                } else {
+                    throwError("copyFile cannot copy a file to replace a directory", &from);
                 }
             }
 

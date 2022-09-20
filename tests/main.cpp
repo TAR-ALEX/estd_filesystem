@@ -192,5 +192,8 @@ int main() {
 
     cout << endl << test.getStats() << endl;
 
+    // fs::copy("sandbox/dir/", "sandbox/dir2/");
+    // fs::copy("sandbox/", "sandbox_copy/");
+
     return 0;
 }
