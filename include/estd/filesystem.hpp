@@ -275,7 +275,7 @@ namespace estd {
             mutable DirectoryEntry e;
 
         public:
-            using std::filesystem::recursive_directory_iterator::directory_iterator;
+            using std::filesystem::recursive_directory_iterator::recursive_directory_iterator;
             friend inline RecursiveDirectoryIterator begin(RecursiveDirectoryIterator iter) noexcept { return iter; }
             friend inline RecursiveDirectoryIterator end(RecursiveDirectoryIterator) noexcept {
                 return RecursiveDirectoryIterator();
