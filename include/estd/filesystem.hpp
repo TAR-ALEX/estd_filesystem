@@ -316,7 +316,7 @@ namespace estd {
         inline Path currentPath() { return std::filesystem::current_path(); }
         inline void copy(Path from, Path to, const uint64_t opt = CopyOptions::recursive);
 
-        inline bool exists(Path p) { return std::filesystem::exists(p); }
+        inline bool exists(Path p) { return std::filesystem::exists(p) || std::filesystem::is_symlink(p); } // standards version returns false on broken symlink if symlink exists (strange)
         inline uintmax_t remove(Path p) { return std::filesystem::remove_all(p); }
         inline bool isDirectory(Path p) { return std::filesystem::is_directory(p); }
         inline Path followSoftLink(Path p) { return std::filesystem::read_symlink(p); }
