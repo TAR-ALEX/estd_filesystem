@@ -368,7 +368,32 @@ namespace estd {
         inline FileTime getModificationTime(Path p) { return std::filesystem::last_write_time(p); }
         inline void setModificationTime(Path p, FileTime n) { std::filesystem::last_write_time(p, n); }
 
-        inline void copySoftLink(Path from, Path to) { std::filesystem::copy_symlink(from, to); }
+        inline void copySoftLink(Path from, Path to, const uint64_t opt = CopyOptions::none) {
+            if (!isSoftLink(from)) throwError("copySoftLink: not a softlink", &from);
+            if (opt & CopyOptions::updateExisting) {
+                if (exists(to)) {
+                    auto newTime = getModificationTime(from);
+                    auto oldTime = getModificationTime(to);
+                    if (newTime > oldTime) {
+                        remove(to);
+                        std::filesystem::copy_symlink(from, to);
+                    }
+                } else {
+                    std::filesystem::copy_symlink(from, to);
+                }
+            } else if (opt & CopyOptions::overwriteExisting) {
+                if (exists(to)) remove(to);
+                std::filesystem::copy_symlink(from, to);
+            } else if (opt & CopyOptions::skipExisting) {
+                if (!exists(to)) std::filesystem::copy_symlink(from, to);
+            } else {
+                if (!exists(to)) {
+                    std::filesystem::copy_symlink(from, to);
+                } else {
+                    throwError("copySoftLink cannot copy, entry exists", &to);
+                }
+            }
+        }
         inline void copyDirectory(Path from, Path to, const uint64_t opt = CopyOptions::recursive) {
             if (from.isFile()) {
                 throwError("copyDirectory cannot copy, from is not a directory", &from);
@@ -492,7 +517,7 @@ namespace estd {
             try {
                 if (isSoftLink(from.removeEmptySuffix())) {
                     // std::cout << "copy_symlink(" << from << ", " << to << ")\n";
-                    copySoftLink(from.removeEmptySuffix(), to.removeEmptySuffix());
+                    copySoftLink(from.removeEmptySuffix(), to.removeEmptySuffix(), opt);
                 } else if (from.isFile()) { // TODO: test strange files such as sockets and blocks under this if
                     // std::cout << "copy_file(" << from << ", " << to << ")\n";
                     copyFile(from.removeEmptySuffix(), to.removeEmptySuffix(), opt);
