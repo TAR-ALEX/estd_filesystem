@@ -153,9 +153,9 @@ namespace estd {
             estd::stack_ptr<Path> replacePrefix(Path from, Path to) {
                 Path path = *this;
 
-                path = ("." / path).normalize();
-                from = ("." / from).normalize();
-                to = ("." / to).normalize();
+                // path = ("" / path).normalize();
+                // from = ("" / from).normalize();
+                // to = ("" / to).normalize();
 
                 bool pathIsDir = !path.hasSuffix();
                 bool fromIsDir = !from.hasSuffix();

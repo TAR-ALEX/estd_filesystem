@@ -86,10 +86,10 @@ int main() {
     fs::Path p = "/some/root/path/";
     test.testBool(p.replaceSuffix("suffix").normalize() == "/some/root/path/suffix");
     test.testBool(p.replacePrefix("prefix").normalize() == "prefix/some/root/path/");
-    test.testBool(p.replacePrefix("/some/", "/other/").value().normalize() == "other/root/path/");
-    test.testBool(p.replacePrefix("/some/root", "/other/root2").value().normalize() == "other/root2/path/");
-    test.testBool(p.replacePrefix("/some/root/", "/other/root2").value().normalize() == "other/root2/path/");
-    test.testBool(p.replacePrefix("/some/root", "/other/root2/").value().normalize() == "other/root2/root/path/");
+    test.testBool(p.replacePrefix("/some/", "/other/").value().normalize() == "/other/root/path/");
+    test.testBool(p.replacePrefix("/some/root", "/other/root2").value().normalize() == "/other/root2/path/");
+    test.testBool(p.replacePrefix("/some/root/", "/other/root2").value().normalize() == "/other/root2/path/");
+    test.testBool(p.replacePrefix("/some/root", "/other/root2/").value().normalize() == "/other/root2/root/path/");
 
     test.testBool(p.removeEmptyPrefix() == "some/root/path/");
     test.testBool(p.removeEmptySuffix() == "/some/root/path");
