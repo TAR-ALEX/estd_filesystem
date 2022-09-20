@@ -75,9 +75,17 @@ namespace estd {
             friend std::ostream& operator<<(std::ostream& stream, Path p) {
                 return stream << "\"" << p.string() << "\"";
             }
+            friend bool operator<(const Path left, const Path right) { return left.string() < right.string(); }
+            friend bool operator>(const Path left, const Path right) { return left.string() > right.string(); }
+            friend bool operator<=(const Path left, const Path right) { return left.string() <= right.string(); }
+            friend bool operator>=(const Path left, const Path right) { return left.string() >= right.string(); }
+            // friend bool operator==(const Path left, const Path right) { return left.string() == right.string(); }
+            // friend bool operator!=(const Path left, const Path right) { return left.string() != right.string(); }
 
             operator std::filesystem::path() const { return std::filesystem::path(path); }
             operator std::string() const { return path; }
+            // operator const char*() const { return path.c_str(); }
+
 
             std::string string() const noexcept { return path; }
 
@@ -107,6 +115,10 @@ namespace estd {
             bool hasSuffix() { return splitSuffix().second != ""; }
             Path getPrefix() { return splitPrefix().first; }
             Path getSuffix() { return splitSuffix().second; }
+            bool hasAntiPrefix() { return splitPrefix().second != ""; }
+            bool hasAntiSuffix() { return splitSuffix().first != ""; }
+            Path getAntiPrefix() { return splitPrefix().second; }
+            Path getAntiSuffix() { return splitSuffix().first; }
             Path replaceSuffix(Path s) { return splitSuffix().first / s; }
             Path replacePrefix(Path s) { return s / splitPrefix().second; }
 
@@ -301,6 +313,7 @@ namespace estd {
 
         using FileTime = std::filesystem::file_time_type;
 
+        inline Path currentPath() { return std::filesystem::current_path(); }
         inline void copy(Path from, Path to, const uint64_t opt = CopyOptions::recursive);
 
         inline bool exists(Path p) { return std::filesystem::exists(p); }
@@ -335,7 +348,6 @@ namespace estd {
             return false;
         }
         inline bool isSocket(Path p) { return std::filesystem::is_socket(p); }
-
         inline void createHardLink(Path from, Path to) { return std::filesystem::create_hard_link(from, to); }
         inline void createSoftLink(Path from, Path to) {
             Path linkroot = to.removeEmptySuffix().splitSuffix().first;
