@@ -271,17 +271,17 @@ namespace estd {
                 return old;
             }
         };
-        class RecursiveDirectoryIterator : public std::filesystem::directory_iterator {
+        class RecursiveDirectoryIterator : public std::filesystem::recursive_directory_iterator {
             mutable DirectoryEntry e;
 
         public:
-            using std::filesystem::directory_iterator::directory_iterator;
+            using std::filesystem::recursive_directory_iterator::directory_iterator;
             friend inline RecursiveDirectoryIterator begin(RecursiveDirectoryIterator iter) noexcept { return iter; }
             friend inline RecursiveDirectoryIterator end(RecursiveDirectoryIterator) noexcept {
                 return RecursiveDirectoryIterator();
             }
             const DirectoryEntry& operator*() const noexcept {
-                e = DirectoryEntry(std::filesystem::directory_iterator::operator*());
+                e = DirectoryEntry(std::filesystem::recursive_directory_iterator::operator*());
                 if (e.is_directory()) {
                     e.assign(e.path().addEmptySuffix());
                     return e;
@@ -299,10 +299,10 @@ namespace estd {
             }
             const DirectoryEntry* operator->() const noexcept { return &*(*this); }
             RecursiveDirectoryIterator& operator++() {
-                return std::filesystem::directory_iterator::operator++(), *this;
+                return std::filesystem::recursive_directory_iterator::operator++(), *this;
             }
             RecursiveDirectoryIterator& increment(std::error_code& ec) {
-                return std::filesystem::directory_iterator::increment(ec), *this;
+                return std::filesystem::recursive_directory_iterator::increment(ec), *this;
             }
             RecursiveDirectoryIterator operator++(int) {
                 RecursiveDirectoryIterator old{**this};
