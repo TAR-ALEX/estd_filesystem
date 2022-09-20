@@ -90,9 +90,19 @@ int main() {
     test.testBool(p.replacePrefix("/some/root", "/other/root2").value().normalize() == "/other/root2/path/");
     test.testBool(p.replacePrefix("/some/root/", "/other/root2").value().normalize() == "/other/root2/path/");
     test.testBool(p.replacePrefix("/some/root", "/other/root2/").value().normalize() == "/other/root2/root/path/");
-
     test.testBool(p.removeEmptyPrefix() == "some/root/path/");
     test.testBool(p.removeEmptySuffix() == "/some/root/path");
+
+    p = "./some/root/path/";
+    test.testBool(p.replacePrefix("some/", "other/").value().normalize() == "other/root/path/");
+    test.testBool(p.replacePrefix("some/root", "other/root2").value().normalize() == "other/root2/path/");
+    test.testBool(p.replacePrefix("some/root/", "other/root2").value().normalize() == "other/root2/path/");
+    test.testBool(p.replacePrefix("some/root", "other/root2/").value().normalize() == "other/root2/root/path/");
+
+    test.testBool(p.removeEmptyPrefix() == "./some/root/path/");
+    test.testBool(p.normalize().removeEmptyPrefix() == "some/root/path/");
+
+
 
     test.testLambda([&] {
         fs::remove("sandbox");
