@@ -83,9 +83,11 @@ namespace estd {
             Path& operator=(Path&& p) = default;
 
             bool operator==(Path&& other) { return path == other.string(); }
-            bool operator!=(Path&& other) { return path != other.string(); }
             bool operator==(const Path& other) { return path == other.string(); }
+#if __cplusplus < 202002L
+            bool operator!=(Path&& other) { return path != other.string(); }
             bool operator!=(const Path& other) { return path != other.string(); }
+#endif
 
             friend Path operator/(const Path& lhs, const Path& rhs) { return Path(lhs.string() + "/" + rhs.string()); }
             friend Path operator+(const Path& lhs, const Path& rhs) { return Path(lhs.string() + rhs.string()); }

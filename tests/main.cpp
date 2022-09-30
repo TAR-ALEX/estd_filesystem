@@ -66,12 +66,12 @@ int main() {
 
 
     test.testBool(fs::Path{} == "");
-    test.testBool(fs::Path{}.normalize() == ".");
-    test.testBool(fs::Path{"."}.normalize() == ".");
-    test.testBool(fs::Path{"./"}.normalize() == ".");
+    test.testBool(fs::Path{}.normalize() == "./");
+    test.testBool(fs::Path{"."}.normalize() == "./");
+    test.testBool(fs::Path{"./"}.normalize() == "./");
     test.testBool(fs::Path{"./test/."}.normalize() == "test/");
     test.testBool(fs::Path{"./test/./././"}.normalize() == "test/");
-    test.testBool(fs::Path{"./test/././../"}.normalize() == "."); // todo: bad behavior
+    test.testBool(fs::Path{"./test/././../"}.normalize() == "./"); // todo: bad behavior
 
     test.testBool(fs::Path{"/home/user/Desktop"}.hasSuffix());
     test.testBool(!fs::Path{"/home/user/"}.hasSuffix());
