@@ -145,6 +145,46 @@ namespace estd {
             Path replaceSuffix(Path s) { return splitSuffix().first / s; }
             Path replacePrefix(Path s) { return s / splitPrefix().second; }
 
+            bool hasExtention() { return splitExtention().second != ""; }
+            std::string getExtention() { return splitExtention().second; }
+            Path replaceExtention(std::string s) { return splitExtention().first + "." + s; }
+
+            std::string getLongExtention() { return splitLongExtention().second; }
+            Path replaceLongExtention(std::string s) { return splitLongExtention().first + "." + s; }
+            
+
+            std::pair<Path, std::string> splitExtention() {
+                size_t mid_pos = 0;
+                std::string source = string();
+                std::string psL = "";
+                std::string psR = "";
+                if(isDirectory()) return {source, ""};
+                if ((mid_pos = source.rfind(".")) != std::string::npos) {
+                    psL = source.substr(0, mid_pos);
+                    psR = source.substr(mid_pos + 1);
+                } else {
+                    return {source, ""};
+                }
+                return {psL, psR};
+            }
+
+
+            std::pair<Path, std::string> splitLongExtention() {
+                size_t mid_pos = 0;
+                std::string source = string();
+                std::string psL = "";
+                std::string psR = "";
+                if(isDirectory()) return {source, ""};
+                source = estd::string_util::splitAll(source, "/").back();
+                if ((mid_pos = source.find(".")) != std::string::npos) {
+                    psL = source.substr(0, mid_pos);
+                    psR = source.substr(mid_pos + 1);
+                } else {
+                    return {source, ""};
+                }
+                return {psL, psR};
+            }
+
             std::pair<Path, Path> splitPrefix() {
                 size_t mid_pos = 0;
                 std::string source = string();
