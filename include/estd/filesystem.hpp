@@ -172,7 +172,7 @@ namespace estd {
                     return {string(), ""};
                 }
                 if (isHidden) psL = "." + psL;
-                psL = getAntiSuffix() / psL;
+                if (estd::string_util::contains(string(), "/")) psL = getAntiSuffix() / psL;
                 return {psL, psR};
             }
 
@@ -195,7 +195,7 @@ namespace estd {
                     return {string(), ""};
                 }
                 if (isHidden) psL = "." + psL;
-                psL = getAntiSuffix() / psL;
+                if (estd::string_util::contains(string(), "/")) psL = getAntiSuffix() / psL;
                 return {psL, psR};
             }
 

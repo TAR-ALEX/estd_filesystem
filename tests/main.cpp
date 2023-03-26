@@ -4,6 +4,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <estd/AnsiEscape.hpp>
 
 
 using std::cout;
@@ -21,10 +22,10 @@ public:
         using std::endl;
         testNum++;
         if (val) {
-            cout << "[PASS] test number ";
+            cout << "["<<estd::setTextColor(0,255,0)<<"PASS"<<estd::clearSettings<<"] test number ";
             passedNum++;
         } else {
-            cout << "[FAIL] test number ";
+            cout << "["<<estd::setTextColor(255,0,0)<<"FAIL"<<estd::clearSettings<<"] test number ";
         }
         cout << testNum << " (" << file << ":" << line << ")" << endl;
     }
@@ -40,10 +41,10 @@ public:
             if (verbose) { cout << e.what() << endl; }
         } catch (...) {};
         if (testResult) {
-            cout << "[PASS] test number ";
+            cout << "["<<estd::setTextColor(0,255,0)<<"PASS"<<estd::clearSettings<<"] test number ";
             passedNum++;
         } else {
-            cout << "[FAIL] test number ";
+            cout << "["<<estd::setTextColor(255,0,0)<<"FAIL"<<estd::clearSettings<<"] test number ";
         }
         cout << testNum << " (" << file << ":" << line << ")" << endl;
     }
@@ -198,6 +199,31 @@ int main() {
             return false; // This test proves std copy function is not reliable
         return true;
     });
+
+    p = "./some/root/path/img112.jpeg";
+    test.testBool(p.getExtention() == p.getLongExtention() && p.getExtention() == "jpeg");
+    test.testBool(p.splitExtention().first == p.splitLongExtention().first && p.splitExtention().first == "./some/root/path/img112");
+    p = "./some/root/path/fileone.txt.jpeg.zip";
+    test.testBool(p.getExtention() == "zip" && p.splitExtention().first == "./some/root/path/fileone.txt.jpeg");
+    test.testBool(p.getLongExtention() == "txt.jpeg.zip" && p.splitLongExtention().first == "./some/root/path/fileone");
+    p = "./some/root/path/.fileone.txt.jpeg.zip";
+    test.testBool(p.getExtention() == "zip" && p.splitExtention().first == "./some/root/path/.fileone.txt.jpeg");
+    test.testBool(p.getLongExtention() == "txt.jpeg.zip" && p.splitLongExtention().first == "./some/root/path/.fileone");
+    p = ".fileone.txt.jpeg.zip";
+    test.testBool(p.getExtention() == "zip" && p.splitExtention().first == ".fileone.txt.jpeg");
+    test.testBool(p.getLongExtention() == "txt.jpeg.zip" && p.splitLongExtention().first == ".fileone");
+    p = "/.fileone.txt.jpeg.zip";
+    test.testBool(p.getExtention() == "zip" && p.splitExtention().first == "/.fileone.txt.jpeg");
+    test.testBool(p.getLongExtention() == "txt.jpeg.zip" && p.splitLongExtention().first == "/.fileone");
+    p = "./.fileone.txt.jpeg.zip";
+    test.testBool(p.getExtention() == "zip" && p.splitExtention().first == "./.fileone.txt.jpeg");
+    test.testBool(p.getLongExtention() == "txt.jpeg.zip" && p.splitLongExtention().first == "./.fileone");
+    p = "./";
+    test.testBool(p.getExtention() == "" && p.splitExtention().first == "./");
+    test.testBool(p.getLongExtention() == "" && p.splitLongExtention().first == "./");
+    p = ".";
+    test.testBool(p.getExtention() == "" && p.splitExtention().first == ".");
+    test.testBool(p.getLongExtention() == "" && p.splitLongExtention().first == ".");
 
     // fs::remove("sandbox");
 
