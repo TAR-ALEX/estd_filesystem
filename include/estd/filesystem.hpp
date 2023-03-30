@@ -146,7 +146,7 @@ namespace estd {
             Path replaceSuffix(Path s) { return splitSuffix().first / s; }
             Path replacePrefix(Path s) { return s / splitPrefix().second; }
 
-            bool hasExtention() { return splitExtention().second != ""; }
+            bool hasExtention() { return splitLongExtention().second != ""; }
             std::string getExtention() { return splitExtention().second; }
             Path replaceExtention(std::string s) { return splitExtention().first + "." + s; }
 
@@ -167,7 +167,7 @@ namespace estd {
                 }
                 if ((mid_pos = source.rfind(".")) != std::string::npos) {
                     psL = source.substr(0, mid_pos);
-                    psR = source.substr(mid_pos + 1);
+                    psR = source.substr(mid_pos);
                 } else {
                     return {string(), ""};
                 }
@@ -190,7 +190,7 @@ namespace estd {
                 }
                 if ((mid_pos = source.find(".")) != std::string::npos) {
                     psL = source.substr(0, mid_pos);
-                    psR = source.substr(mid_pos + 1);
+                    psR = source.substr(mid_pos);
                 } else {
                     return {string(), ""};
                 }
